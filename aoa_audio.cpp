@@ -1,5 +1,7 @@
-#define XPLM_64 1
-#define XPLM_API
+#define XPLM_64 1  // Define XPLM_64 as 1 for 64-bit compatibility
+#ifndef XPLM_API   
+#define XPLM_API   // XPLM_API 
+#endif
 
 #ifdef _WIN32
     #define PLUGIN_API __declspec(dllexport)
@@ -19,6 +21,9 @@
 #include <cmath>
 #include <vector>
 #include <cstring>
+
+// Function declarations
+void cleanupAudio();
 
 // AOA ranges and tone configuration
 #define AOA_LOW_THRESHOLD    -2.0f   // Below this is "low AOA"

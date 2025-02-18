@@ -11,7 +11,30 @@ Currently using: X-Plane SDK 4.1.1 for Windows, Linux and Mac ZIP (X-Plane 12.1.
 
 ## Build
 
+```bash
+mkdir build
+cd build
+cmake ..
+```
+
+on unix/macos:
+
+```bash
+make
+```
+
+output  ```build/mac_x64/AOA-Tone-FlyOnSpeed.dylib```
+
+on windows: ???? not sure if this is correct
+
+```bash
+cmake --build .
+```
+
+
+
 You can adjust the frequencies and durations by modifying the values in the initializeAudio() function. The tones will play continuously as long as the AOA is in their respective ranges, and will switch immediately when the AOA changes ranges.
+
 Remember to install OpenAL development libraries on your system:
 On Windows: Install OpenAL SDK
 On Linux: sudo apt-get install libopenal-dev
