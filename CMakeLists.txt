@@ -81,22 +81,26 @@ endif()
 target_include_directories(AOA-Tone-FlyOnSpeed PRIVATE
     ${CMAKE_SOURCE_DIR}/SDK/CHeaders
     ${CMAKE_SOURCE_DIR}/SDK/CHeaders/XPLM
+    ${CMAKE_SOURCE_DIR}/SDK/CHeaders/Widgets
 )
 
 # Link X-Plane SDK libraries
 if(APPLE)
     target_link_libraries(AOA-Tone-FlyOnSpeed
         "${XPLANE_SDK_LIBS}/XPLM.framework"
+        "${XPLANE_SDK_LIBS}/XPWidgets.framework"
         "-framework OpenAL"
     )
 elseif(WIN32)
     target_link_libraries(AOA-Tone-FlyOnSpeed
         "${XPLANE_SDK_LIBS}/XPLM_64.lib"
+        "${XPLANE_SDK_LIBS}/XPWidgets_64.lib"
         "OpenAL32"
     )
 else()
     target_link_libraries(AOA-Tone-FlyOnSpeed
         "${XPLANE_SDK_LIBS}/XPLM_64.so"
+        "${XPLANE_SDK_LIBS}/XPWidgets_64.so"
         "openal"
     )
 endif() 
