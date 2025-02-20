@@ -8,8 +8,7 @@ This plugin requires the XPlane SDK to be installed. You can download it from th
 
 Currently using: X-Plane SDK 4.1.1 for Windows, Linux and Mac ZIP (X-Plane 12.1.0 & newer)
 
-
-## Build
+## Build on Mac
 
 ```bash
 mkdir build
@@ -25,13 +24,13 @@ make
 
 output  ```build/mac_x64/AOA-Tone-FlyOnSpeed.dylib```
 
-on windows: ???? not sure if this is correct
-
-```bash
-cmake --build .
-```
+The .dylib file needs to be copied to the ```Resources/plugins``` folder in your XPlane installation.
+and renamed to .xpl
 
 
+
+
+## Code notes
 
 You can adjust the frequencies and durations by modifying the values in the initializeAudio() function. The tones will play continuously as long as the AOA is in their respective ranges, and will switch immediately when the AOA changes ranges.
 
@@ -42,5 +41,3 @@ On macOS: OpenAL is included in the system
 
 ## Install
 
-1. Download the plugin from the Releases page.
-2. Unzip the file and copy the `AOA-Tone-FlyOnSpeed.xml` file to your `Aircraft` folder.

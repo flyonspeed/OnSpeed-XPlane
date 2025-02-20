@@ -17,6 +17,9 @@
 #include "SDK/CHeaders/XPLM/XPLMGraphics.h"
 #include "SDK/CHeaders/XPLM/XPLMProcessing.h"
 #include "SDK/CHeaders/XPLM/XPLMDataAccess.h"
+#include "SDK/CHeaders/XPLM/XPLMPlugin.h"
+#include "SDK/CHeaders/XPLM/XPLMUtilities.h"
+
 #include <iostream>
 #include <cmath>
 #include <vector>
@@ -79,18 +82,25 @@ float calculatePulseRate(float aoa) {
 }
 
 // Function to initialize OpenAL and create tone
-bool initializeAudio() {
+static float init_sound(float elapsed, float elapsed_sim, int counter, void * ref)
+{
     device = alcOpenDevice(nullptr);
-    if (!device) return false;
+    XPLMDebugString("Initializing audio device\n");  // Single string only
+    if (!device)  {
+        XPLMDebugString("Failed to open device\n");
+        return false;
+    }
     
     context = alcCreateContext(device, nullptr);
+    XPLMDebugString("Creating audio context\n");  // Single string only
     if (!context) {
+        XPLMDebugString("Failed to create context\n");
         alcCloseDevice(device);
         return false;
     }
     
     alcMakeContextCurrent(context);
-    
+
     // Generate source and buffer
     alGenSources(1, &audioSource);
     alGenBuffers(1, &audioBuffer);
@@ -108,7 +118,7 @@ bool initializeAudio() {
     // Configure source to loop
     alSourcei(audioSource, AL_LOOPING, AL_FALSE);
     
-    return true;
+    return 0.0f;
 }
 
 // Updated PlayAOATone function
@@ -138,6 +148,9 @@ float CheckAOAAndPlayTone(float inElapsedSinceLastCall,
                          float inElapsedTimeSinceLastFlightLoop, 
                          int inCounter, 
                          void *inRefcon) {
+
+    // use XPLMGetDataf to get the AOA value.  https://developer.x-plane.com/sdk/XPLMDataAccess/#XPLMDataRef
+
     float aoa = XPLMGetDataf(aoaDataRef);
     PlayAOATone(aoa, inElapsedSinceLastCall);
     return -1.0f;  // Negative value means "call me next frame"
@@ -149,14 +162,34 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outSig, "xplane.plugin.aoa-tone-flyon-speed");
     strcpy(outDesc, "A plugin that plays audio tones based on AOA");
     
-    if (!initializeAudio()) {
-        std::cerr << "Failed to initialize audio" << std::endl;
-        return 0;
-    }
+	if( sizeof(unsigned int) != 4 ||
+		sizeof(unsigned short) != 2)
+	{
+		XPLMDebugString("This example plugin was compiled with a compiler with weird type sizes.\n");
+		return 0;
+	}
 
-    aoaDataRef = XPLMFindDataRef("sim/cockpit2/gauges/indicators/aoa_angle_degrees");
+    // if (!initializeAudio()) {
+    //     XPLMDebugString("Failed to initialize audio");
+    //     return 0;
+    // }
+
+	XPLMRegisterFlightLoopCallback(init_sound,-1.0,NULL);	
+
+
+    // find the AOA DataRef 
+    // https://developer.x-plane.com/sdk/XPLMDataAccess/#XPLMDataRef
+
+    // here is a site that shows a list of DataRefs:
+    // https://siminnovations.com/xplane/dataref/index.php
+
+    // find the AOA DataRef.
+    // use sim/cockpit2/gauges/indicators/AoA_pilot ??
+    // or sim/cockpit2/gauges/indicators/aoa_angle_degrees ??
+
+    aoaDataRef = XPLMFindDataRef("sim/cockpit2/gauges/indicators/AoA_pilot");
     if (aoaDataRef == nullptr) {
-        std::cerr << "Failed to find AOA DataRef" << std::endl;
+        XPLMDebugString("Failed to find AOA DataRef");
         return 0;
     }
 
