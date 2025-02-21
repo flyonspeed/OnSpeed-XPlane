@@ -1,3 +1,5 @@
+#define FLYONSPEED_VERSION  "0.1.2"
+
 #define XPLM_64 1  // Define XPLM_64 as 1 for 64-bit compatibility
 #ifndef XPLM_API   
 #define XPLM_API   // XPLM_API 
@@ -39,20 +41,25 @@
 #include <cmath>
 #include <vector>
 #include <cstring>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 // Function declarations
 void cleanupAudio();
 
-// AOA ranges and tone configuration
-#define AOA_LOW_THRESHOLD       -2.0f   // Below this is "low AOA"
-#define AOA_HIGH_THRESHOLD      2.0f    // Above this is "high AOA"
-#define AOA_STALL_WARNING       15.0f   // Maximum AOA before stall
+// AOA ranges for different states
+#define AOA_BELOW_LDMAX        5.5f    // Below this is "Below LDMax" - no tone
+#define AOA_BELOW_ONSPEED      9.0f    // Between LDMax and this is "Below OnSpeed"
+#define AOA_ONSPEED_MAX        10.5f   // Between Below OnSpeed and this is "OnSpeed"
+#define AOA_ABOVE_ONSPEED_MAX  11.5f   // Between OnSpeed and this is "Above OnSpeed"
+                                       // Above this is "Stall Warning"
 
-#define TONE_FREQUENCY          400.0f  // Base frequency in Hz
-#define PULSE_MIN_RATE          1.5f    // Minimum pulses per second
-#define PULSE_MAX_RATE_LOW      8.2f    // Maximum pulses per second for low AOA
-#define PULSE_MAX_RATE_HIGH     6.2f    // Maximum pulses per second for high AOA
-
+// Tone configuration
+#define TONE_NORMAL_FREQ       400.0f   // Normal frequency in Hz
+#define TONE_HIGH_FREQ         1600.0f  // High frequency in Hz
+#define PULSE_RATE_NORMAL      6.2f     // Standard pulse rate
+#define PULSE_RATE_STALL       20.0f    // Stall warning pulse rate
 #define DEFAULT_VOLUME          1.0f    // Default volume level (0.0 to 1.0)
 
 // OpenAL device and context
@@ -71,10 +78,28 @@ XPLMDataRef aoaDataRef = nullptr;
 // Add these globals for the UI
 static XPWidgetID audioControlWidget = nullptr;
 static XPWidgetID audioToggleCheckbox = nullptr;
-static XPWidgetID widgetSoundStatus = nullptr;
+static XPWidgetID widgetAOAValue = nullptr;
+static XPWidgetID widgetButtonReload = nullptr;
 static bool audioEnabled = false;
 static XPLMMenuID menuId;
 
+// Add these globals at the top of the file with other globals
+const int AOA_HISTORY_SIZE = 20;
+std::vector<float> aoaHistory;
+float lastValidAoa = 0.0f;
+const float MAX_AOA_CHANGE = 6.0f;  // Maximum allowed change in degrees
+
+// Add these globals with other globals
+std::thread* pulseThread = nullptr;
+std::mutex aoaMutex;
+std::atomic<bool> threadRunning{false};
+std::atomic<float> currentAOA{0.0f};
+std::atomic<bool> shouldPlay{false};
+
+// Add these globals with other globals
+static int lastWidgetBottom = 0;
+static const int WIDGET_HEIGHT = 20;
+static const int WIDGET_MARGIN = 5;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -91,24 +116,6 @@ std::vector<ALshort> generateTone(float frequency, float duration, int sampleRat
     }
     
     return buffer;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Function to calculate pulse rate based on AOA
-// aoa value is between range
-float calculatePulseRate(float aoa) {
-    if (aoa < AOA_LOW_THRESHOLD) {
-        // Map low AOA to pulse rate (further negative = slower pulse)
-        float ratio = (aoa - AOA_LOW_THRESHOLD) / (AOA_LOW_THRESHOLD - 2 * AOA_LOW_THRESHOLD);
-        return PULSE_MIN_RATE + (PULSE_MAX_RATE_LOW - PULSE_MIN_RATE) * (1.0f - ratio);
-    } else if (aoa > AOA_HIGH_THRESHOLD) {
-        // Map high AOA to pulse rate (higher AOA = faster pulse)
-        float ratio = (aoa - AOA_HIGH_THRESHOLD) / (AOA_STALL_WARNING - AOA_HIGH_THRESHOLD);
-        ratio = std::min(1.0f, ratio);  // Clamp to maximum
-        return PULSE_MIN_RATE + (PULSE_MAX_RATE_HIGH - PULSE_MIN_RATE) * ratio;
-    }
-    return 0.0f;  // No pulsing in normal range
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -140,8 +147,8 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
     // Set the initial volume (gain)
     alSourcef(audioSource, AL_GAIN, DEFAULT_VOLUME);
     
-    // Create the 400 Hz tone
-    auto tone = generateTone(TONE_FREQUENCY, 0.1f);  // 0.1s duration
+    // Create a short tone that we'll use as our base sound
+    auto tone = generateTone(TONE_NORMAL_FREQ, 0.1f);  // 0.1s duration
     
     // Load the tone into OpenAL buffer
     alBufferData(audioBuffer, AL_FORMAT_MONO16, tone.data(), 
@@ -152,6 +159,13 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
     
     // Configure source to loop
     alSourcei(audioSource, AL_LOOPING, AL_FALSE);
+    
+    // Check for any OpenAL errors
+    ALenum error = alGetError();
+    if (error != AL_NO_ERROR) {
+        XPLMDebugString("FlyOnSpeed: OpenAL error during initialization\n");
+        return false;
+    }
     
     return 0.0f;
 }
@@ -209,50 +223,101 @@ static int AudioControlHandler(
             XPLMDebugString(("FlyOnSpeed: AudioControlHandler. Button state: " + std::to_string(audioEnabled) + "\n").c_str());
             return 1;
         }
+        // Add handler for reload button
+        else if (inParam1 == (intptr_t)widgetButtonReload) {
+            XPLMDebugString("FlyOnSpeed: Reloading plugins\n");
+            XPLMReloadPlugins();
+            return 1;
+        }
     }
 
     return 0;
 }
 
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Add this helper function before CreateAudioControlWindow
+static XPWidgetID createWidget(int widgetClass, const char* description, int leftOffset = 20, int width = 140) {
+    if (audioControlWidget == nullptr) {
+        return nullptr;
+    }
+    
+    // Get the main window dimensions
+    int left, top, right, bottom;
+    XPGetWidgetGeometry(audioControlWidget, &left, &top, &right, &bottom);
+    
+    // If this is the first widget, start from the top
+    if (lastWidgetBottom == 0) {
+        lastWidgetBottom = top - 15;  // Initial offset from top
+    } else {
+        lastWidgetBottom -= (WIDGET_HEIGHT + WIDGET_MARGIN);  // Space between widgets
+    }
+    
+    XPWidgetID newWidget = XPCreateWidget(
+        left + leftOffset,                    // left
+        lastWidgetBottom,                     // top
+        left + leftOffset + width,            // right
+        lastWidgetBottom - WIDGET_HEIGHT,     // bottom
+        1,                                    // visible
+        description,                          // descriptor
+        0,                                    // not root
+        audioControlWidget,                   // container
+        widgetClass                           // class
+    );
+    
+    return newWidget;
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// create the control window
-static void CreateAudioControlWindow(int x, int y, int w, int h)
-{
+// Modify CreateAudioControlWindow to use the helper function
+static void CreateAudioControlWindow(int x, int y, int w, int h) {
     int x2 = x + w;
     int y2 = y - h;
-
+    
+    // Reset the lastWidgetBottom for new window
+    lastWidgetBottom = 0;
+    
+    // Create main window
     audioControlWidget = XPCreateWidget(x, y, x2, y2,
         1,  // Visible
         "Fly On Speed", // desc
         1,  // root
         nullptr, // no container
         xpWidgetClass_MainWindow);
-
+    
     XPSetWidgetProperty(audioControlWidget, xpProperty_MainWindowHasCloseBoxes, 1);
 
-    // Create checkbox
-    audioToggleCheckbox = XPCreateWidget(x + 20, y - 30, x + 120, y - 50,
-        1, // Visible
-        "Sound: Off", // desc
-        0, // not root
-        audioControlWidget,
-        xpWidgetClass_Button);
+    // Create version label
+    char versionText[50];
+    snprintf(versionText, sizeof(versionText), "Version: %s", FLYONSPEED_VERSION);
+    createWidget(
+        xpWidgetClass_Caption,
+        versionText
+    );
 
-    //XPSetWidgetProperty(audioToggleCheckbox, xpProperty_ButtonType, xpButtonBehaviorCheckBox);
-    //XPSetWidgetProperty(audioToggleCheckbox, xpProperty_ButtonState, 1);
+    // Create widgets using helper function
+    widgetAOAValue = createWidget(
+        xpWidgetClass_Caption,
+        ""  // Empty descriptor - will be updated with AOA value
+    );
 
-    // // create a caption next to the checkbox
-    // widgetSoundStatus = XPCreateWidget(x + 100, y - 30, x + 120, y - 50,
-    //     1, // Visible
-    //     "Sound: Off", // desc
-    //     0, // not root
-    //     audioControlWidget,
-    //     xpWidgetClass_Caption);
-
-
+    // Create widgets using helper function
+    widgetAOAValue = createWidget(
+        xpWidgetClass_Caption,
+        ""  // Empty descriptor - will be updated with AOA value
+    );
+    
+    audioToggleCheckbox = createWidget(
+        xpWidgetClass_Button,
+        "Sound: Off"
+    );
+    
+    widgetButtonReload = createWidget(
+        xpWidgetClass_Button,
+        "Reload Plugins"
+    );
+    
     XPAddWidgetCallback(audioControlWidget, AudioControlHandler);
 }
 
@@ -263,7 +328,7 @@ static void AudioMenuHandler(void * mRef, void * iRef)
 {
     if (!strcmp((char *)iRef, "Show")) {
         if (!audioControlWidget) {
-            CreateAudioControlWindow(300, 450, 200, 100);
+            CreateAudioControlWindow(300, 450, 200, 200);
         } else if (!XPIsWidgetVisible(audioControlWidget)) {
             XPShowWidget(audioControlWidget);
         }
@@ -272,30 +337,101 @@ static void AudioMenuHandler(void * mRef, void * iRef)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Modify PlayAOATone to respect enabled state
+// Add this new function to handle the pulse timing
+void PulseThreadFunction() {
+    while (threadRunning) {
+        if (!audioEnabled || !shouldPlay) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
+
+        float localAOA;
+        {
+            std::lock_guard<std::mutex> lock(aoaMutex);
+            localAOA = currentAOA;
+        }
+
+        float pulseRate = PULSE_RATE_NORMAL;
+        float frequency = TONE_NORMAL_FREQ;
+
+        // Determine pulse rate and frequency based on AOA
+        if (localAOA > AOA_ABOVE_ONSPEED_MAX) {
+            pulseRate = PULSE_RATE_STALL;
+            frequency = TONE_HIGH_FREQ;
+        } else if (localAOA > AOA_ONSPEED_MAX) {
+            frequency = TONE_HIGH_FREQ;
+        }
+
+        // Calculate sleep duration based on pulse rate
+        int sleepMs = static_cast<int>(1000.0f / pulseRate);
+
+        alSourcef(audioSource, AL_FREQUENCY, frequency);
+        alSourcei(audioSource, AL_LOOPING, AL_FALSE);
+        alSourcePlay(audioSource);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Modify PlayAOATone to focus on AOA processing and tone selection
 void PlayAOATone(float aoa, float elapsedTime) {
+    // Spike filter - if change is too large, use last valid value
+    if (std::abs(aoa - lastValidAoa) > MAX_AOA_CHANGE) {
+        aoa = lastValidAoa;
+    } else {
+        lastValidAoa = aoa;
+    }
+
+    // Update moving average
+    if (aoaHistory.size() >= AOA_HISTORY_SIZE) {
+        aoaHistory.erase(aoaHistory.begin());
+    }
+    aoaHistory.push_back(aoa);
+
+    // Calculate moving average
+    float avgAoa = 0.0f;
+    for (float value : aoaHistory) {
+        avgAoa += value;
+    }
+    avgAoa /= aoaHistory.size();
+
+    // Update widgetAOAValue with both current and averaged AOA values
+    char aoaText[50];
+    snprintf(aoaText, sizeof(aoaText), "AOA: %.1f (avg: %.1f)", aoa, avgAoa);
+    XPSetWidgetDescriptor(widgetAOAValue, aoaText);
+
     if (!audioEnabled) {
+        shouldPlay = false;
         alSourceStop(audioSource);
         return;
     }
 
-    static float timeSinceLastPulse = 0.0f;
+    // Update the current AOA for the pulse thread
+    {
+        std::lock_guard<std::mutex> lock(aoaMutex);
+        currentAOA = avgAoa;
+    }
+
+    if (avgAoa < AOA_BELOW_LDMAX) {
+        shouldPlay = false;
+        alSourceStop(audioSource);
+        return;
+    }
     
-    if (aoa >= AOA_LOW_THRESHOLD && aoa <= AOA_HIGH_THRESHOLD) {
-        // Steady tone for normal AOA range
+    // Handle steady tone for OnSpeed condition
+    if (avgAoa >= AOA_BELOW_ONSPEED && avgAoa <= AOA_ONSPEED_MAX) {
+        shouldPlay = false;  // Disable pulsing
+        alSourcef(audioSource, AL_FREQUENCY, TONE_NORMAL_FREQ);
         alSourcei(audioSource, AL_LOOPING, AL_TRUE);
-        alSourcePlay(audioSource);
-    } else {
-        // Pulsing tone for high or low AOA
-        float pulseRate = calculatePulseRate(aoa);
-        float pulsePeriod = 1.0f / pulseRate;
-        
-        timeSinceLastPulse += elapsedTime;
-        
-        if (timeSinceLastPulse >= pulsePeriod) {
-            timeSinceLastPulse = 0.0f;
+        ALint state;
+        alGetSourcei(audioSource, AL_SOURCE_STATE, &state);
+        if (state != AL_PLAYING) {
             alSourcePlay(audioSource);
         }
+    } else {
+        shouldPlay = true;  // Enable pulsing
     }
 }
 
@@ -316,7 +452,7 @@ float CheckAOAAndPlayTone(float inElapsedSinceLastCall,
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Modify XPluginStart
+// Modify XPluginStart to start the pulse thread
 PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outName, "AOA-Tone-FlyOnSpeed");
     strcpy(outSig, "xplane.plugin.aoa-tone-flyon-speed");
@@ -346,8 +482,9 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     // find the AOA DataRef.
     // use sim/cockpit2/gauges/indicators/AoA_pilot ??
     // or sim/cockpit2/gauges/indicators/aoa_angle_degrees ??
+    // sim/flightmodel/position/alpha
 
-    aoaDataRef = XPLMFindDataRef("sim/cockpit2/gauges/indicators/AoA_pilot");
+    aoaDataRef = XPLMFindDataRef("sim/flightmodel/position/alpha");
     if (aoaDataRef == nullptr) {
         XPLMDebugString("FlyOnSpeed: Failed to find AOA DataRef");
         return 0;
@@ -360,13 +497,25 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     menuId = XPLMCreateMenu("Fly On Speed", XPLMFindPluginsMenu(), item, AudioMenuHandler, nullptr);
     XPLMAppendMenuItem(menuId, "Show", (void*)"Show", 1);
 
+    // Start the pulse thread
+    threadRunning = true;
+    pulseThread = new std::thread(PulseThreadFunction);
+
     return 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Modify XPluginStop to cleanup UI
+// Modify XPluginStop to cleanup the thread
 PLUGIN_API void XPluginStop(void) {
+    // Stop the pulse thread
+    threadRunning = false;
+    if (pulseThread) {
+        pulseThread->join();
+        delete pulseThread;
+        pulseThread = nullptr;
+    }
+
     if (audioControlWidget) {
         XPDestroyWidget(audioControlWidget, 1);
         audioControlWidget = nullptr;
