@@ -1,4 +1,5 @@
-#define FLYONSPEED_VERSION  "0.1.2"
+#define FLYONSPEED_VERSION  "0.1.9"
+#define FLYONSPEED_DATE     "2/21/2025"
 
 #define XPLM_64 1  // Define XPLM_64 as 1 for 64-bit compatibility
 #ifndef XPLM_API   
@@ -52,7 +53,7 @@ void cleanupAudio();
 #define AOA_BELOW_LDMAX        5.5f    // Below this is "Below LDMax" - no tone
 #define AOA_BELOW_ONSPEED      9.0f    // Between LDMax and this is "Below OnSpeed"
 #define AOA_ONSPEED_MAX        10.5f   // Between Below OnSpeed and this is "OnSpeed"
-#define AOA_ABOVE_ONSPEED_MAX  11.5f   // Between OnSpeed and this is "Above OnSpeed"
+#define AOA_ABOVE_ONSPEED_MAX  11.5f   // Above this is "Above OnSpeed"
                                        // Above this is "Stall Warning"
 
 // Tone configuration
@@ -62,15 +63,20 @@ void cleanupAudio();
 #define PULSE_RATE_STALL       20.0f    // Stall warning pulse rate
 #define DEFAULT_VOLUME          1.0f    // Default volume level (0.0 to 1.0)
 
+// Add these new constants
+#define PULSE_RATE_MIN         1.5f    // Minimum pulses per second at AOA_BELOW_LDMAX
+#define PULSE_RATE_MAX         8.2f    // Maximum pulses per second at AOA_BELOW_ONSPEED
+
+// Add these new constants near the other constants
+#define ABOVE_ONSPEED_PULSE_MIN  1.5f    // Minimum pulses per second at AOA_ONSPEED_MAX
+#define ABOVE_ONSPEED_PULSE_MAX  6.2f    // Maximum pulses per second at AOA_ABOVE_ONSPEED_MAX
+
 // OpenAL device and context
 ALCdevice* device = nullptr;
 ALCcontext* context = nullptr;
 ALuint audioSource;
-ALuint audioBuffer;
-
-// Timing variables for pulse
-float lastPulseTime = 0.0f;
-bool pulseState = false;
+ALuint audioBufferNormal;  // Rename existing audioBuffer
+ALuint audioBufferHigh;    // New buffer for high frequency
 
 // DataRef for AOA
 XPLMDataRef aoaDataRef = nullptr;
@@ -80,6 +86,7 @@ static XPWidgetID audioControlWidget = nullptr;
 static XPWidgetID audioToggleCheckbox = nullptr;
 static XPWidgetID widgetAOAValue = nullptr;
 static XPWidgetID widgetButtonReload = nullptr;
+static XPWidgetID widgetAudioStatus = nullptr;
 static bool audioEnabled = false;
 static XPLMMenuID menuId;
 
@@ -95,6 +102,9 @@ std::mutex aoaMutex;
 std::atomic<bool> threadRunning{false};
 std::atomic<float> currentAOA{0.0f};
 std::atomic<bool> shouldPlay{false};
+
+float audioFrequency = TONE_NORMAL_FREQ;
+float audioPulseRate = PULSE_RATE_NORMAL;
 
 // Add these globals with other globals
 static int lastWidgetBottom = 0;
@@ -124,14 +134,14 @@ std::vector<ALshort> generateTone(float frequency, float duration, int sampleRat
 static float init_sound(float elapsed, float elapsed_sim, int counter, void * ref)
 {
     device = alcOpenDevice(nullptr);
-    XPLMDebugString("FlyOnSpeed: Initializing audio device\n");  // Single string only
-    if (!device)  {
+    XPLMDebugString("FlyOnSpeed: Initializing audio device\n");
+    if (!device) {
         XPLMDebugString("FlyOnSpeed: Failed to open device\n");
         return false;
     }
     
     context = alcCreateContext(device, nullptr);
-    XPLMDebugString("FlyOnSpeed: Creating audio context\n");  // Single string only
+    XPLMDebugString("FlyOnSpeed: Creating audio context\n");
     if (!context) {
         XPLMDebugString("FlyOnSpeed: Failed to create context\n");
         alcCloseDevice(device);
@@ -140,32 +150,29 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
     
     alcMakeContextCurrent(context);
 
-    // Generate source and buffer
+    // Generate source and buffers
     alGenSources(1, &audioSource);
-    alGenBuffers(1, &audioBuffer);
+    alGenBuffers(1, &audioBufferNormal);
+    alGenBuffers(1, &audioBufferHigh);
     
     // Set the initial volume (gain)
     alSourcef(audioSource, AL_GAIN, DEFAULT_VOLUME);
     
-    // Create a short tone that we'll use as our base sound
-    auto tone = generateTone(TONE_NORMAL_FREQ, 0.1f);  // 0.1s duration
+    // Create normal frequency tone
+    auto toneNormal = generateTone(TONE_NORMAL_FREQ, 0.1f);
+    alBufferData(audioBufferNormal, AL_FORMAT_MONO16, toneNormal.data(), 
+                 toneNormal.size() * sizeof(ALshort), 44100);
+                 
+    // Create high frequency tone
+    auto toneHigh = generateTone(TONE_HIGH_FREQ, 0.1f);
+    alBufferData(audioBufferHigh, AL_FORMAT_MONO16, toneHigh.data(), 
+                 toneHigh.size() * sizeof(ALshort), 44100);
     
-    // Load the tone into OpenAL buffer
-    alBufferData(audioBuffer, AL_FORMAT_MONO16, tone.data(), 
-                 tone.size() * sizeof(ALshort), 44100);
-    
-    // Set the buffer on the source
-    alSourcei(audioSource, AL_BUFFER, audioBuffer);
+    // Set initial buffer
+    alSourcei(audioSource, AL_BUFFER, audioBufferNormal);
     
     // Configure source to loop
     alSourcei(audioSource, AL_LOOPING, AL_FALSE);
-    
-    // Check for any OpenAL errors
-    ALenum error = alGetError();
-    if (error != AL_NO_ERROR) {
-        XPLMDebugString("FlyOnSpeed: OpenAL error during initialization\n");
-        return false;
-    }
     
     return 0.0f;
 }
@@ -290,22 +297,20 @@ static void CreateAudioControlWindow(int x, int y, int w, int h) {
 
     // Create version label
     char versionText[50];
-    snprintf(versionText, sizeof(versionText), "Version: %s", FLYONSPEED_VERSION);
+    snprintf(versionText, sizeof(versionText), "Version: %s %s", FLYONSPEED_VERSION, FLYONSPEED_DATE);
     createWidget(
         xpWidgetClass_Caption,
         versionText
     );
 
-    // Create widgets using helper function
     widgetAOAValue = createWidget(
         xpWidgetClass_Caption,
         ""  // Empty descriptor - will be updated with AOA value
     );
 
-    // Create widgets using helper function
-    widgetAOAValue = createWidget(
+    widgetAudioStatus = createWidget(
         xpWidgetClass_Caption,
-        ""  // Empty descriptor - will be updated with AOA value
+        "" 
     );
     
     audioToggleCheckbox = createWidget(
@@ -337,8 +342,10 @@ static void AudioMenuHandler(void * mRef, void * iRef)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Add this new function to handle the pulse timing
+// Modify the PulseThreadFunction to handle variable pulse rates
 void PulseThreadFunction() {
+    float lastFrequency = 0.0f;
+
     while (threadRunning) {
         if (!audioEnabled || !shouldPlay) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -351,21 +358,35 @@ void PulseThreadFunction() {
             localAOA = currentAOA;
         }
 
-        float pulseRate = PULSE_RATE_NORMAL;
-        float frequency = TONE_NORMAL_FREQ;
-
         // Determine pulse rate and frequency based on AOA
         if (localAOA > AOA_ABOVE_ONSPEED_MAX) {
-            pulseRate = PULSE_RATE_STALL;
-            frequency = TONE_HIGH_FREQ;
+            audioPulseRate = PULSE_RATE_STALL;
+            audioFrequency = TONE_HIGH_FREQ;
         } else if (localAOA > AOA_ONSPEED_MAX) {
-            frequency = TONE_HIGH_FREQ;
+            // Calculate variable pulse rate for Above OnSpeed condition
+            float t = (localAOA - AOA_ONSPEED_MAX) / (AOA_ABOVE_ONSPEED_MAX - AOA_ONSPEED_MAX);
+            audioPulseRate = ABOVE_ONSPEED_PULSE_MIN + t * (ABOVE_ONSPEED_PULSE_MAX - ABOVE_ONSPEED_PULSE_MIN);
+            audioFrequency = TONE_HIGH_FREQ;
+        } else if (localAOA >= AOA_BELOW_LDMAX && localAOA <= AOA_BELOW_ONSPEED) {
+            float t = (localAOA - AOA_BELOW_LDMAX) / (AOA_BELOW_ONSPEED - AOA_BELOW_LDMAX);
+            audioPulseRate = PULSE_RATE_MIN + t * (PULSE_RATE_MAX - PULSE_RATE_MIN);
+            audioFrequency = TONE_NORMAL_FREQ;
+        }
+
+        // If frequency changed, switch buffers
+        if (lastFrequency != audioFrequency) {
+            lastFrequency = audioFrequency;
+            alSourceStop(audioSource);
+            if (audioFrequency == TONE_HIGH_FREQ) {
+                alSourcei(audioSource, AL_BUFFER, audioBufferHigh);
+            } else {
+                alSourcei(audioSource, AL_BUFFER, audioBufferNormal);
+            }
         }
 
         // Calculate sleep duration based on pulse rate
-        int sleepMs = static_cast<int>(1000.0f / pulseRate);
+        int sleepMs = static_cast<int>(1000.0f / audioPulseRate);
 
-        alSourcef(audioSource, AL_FREQUENCY, frequency);
         alSourcei(audioSource, AL_LOOPING, AL_FALSE);
         alSourcePlay(audioSource);
 
@@ -375,7 +396,7 @@ void PulseThreadFunction() {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Modify PlayAOATone to focus on AOA processing and tone selection
+// Modify PlayAOATone to handle the Below OnSpeed condition
 void PlayAOATone(float aoa, float elapsedTime) {
     // Spike filter - if change is too large, use last valid value
     if (std::abs(aoa - lastValidAoa) > MAX_AOA_CHANGE) {
@@ -402,9 +423,11 @@ void PlayAOATone(float aoa, float elapsedTime) {
     snprintf(aoaText, sizeof(aoaText), "AOA: %.1f (avg: %.1f)", aoa, avgAoa);
     XPSetWidgetDescriptor(widgetAOAValue, aoaText);
 
+
     if (!audioEnabled) {
         shouldPlay = false;
         alSourceStop(audioSource);
+        XPSetWidgetDescriptor(widgetAudioStatus, "");
         return;
     }
 
@@ -417,6 +440,7 @@ void PlayAOATone(float aoa, float elapsedTime) {
     if (avgAoa < AOA_BELOW_LDMAX) {
         shouldPlay = false;
         alSourceStop(audioSource);
+        XPSetWidgetDescriptor(widgetAudioStatus, "Audio: None - Below L/DMax");
         return;
     }
     
@@ -430,8 +454,13 @@ void PlayAOATone(float aoa, float elapsedTime) {
         if (state != AL_PLAYING) {
             alSourcePlay(audioSource);
         }
+        XPSetWidgetDescriptor(widgetAudioStatus, "Audio: Steady - OnSpeed");
     } else {
-        shouldPlay = true;  // Enable pulsing
+        shouldPlay = true;  // Enable pulsing for all other conditions
+
+        char audioStatusText[50];
+        snprintf(audioStatusText, sizeof(audioStatusText), "Audio Hz: %.1f pps: %.1f", audioFrequency, audioPulseRate);
+        XPSetWidgetDescriptor(widgetAudioStatus, audioStatusText);
     }
 }
 
@@ -551,7 +580,8 @@ void cleanupAudio() {
     if (context) {
         alSourceStop(audioSource);
         alDeleteSources(1, &audioSource);
-        alDeleteBuffers(1, &audioBuffer);
+        alDeleteBuffers(1, &audioBufferNormal);
+        alDeleteBuffers(1, &audioBufferHigh);
         
         alcMakeContextCurrent(nullptr);
         alcDestroyContext(context);
