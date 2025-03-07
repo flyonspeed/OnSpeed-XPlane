@@ -2,6 +2,10 @@
 
 This plugin plays audio tones based on the Angle of Attack (AOA) and Fly On Speed 
 
+## Releases
+
+Goto [Releases](https://github.com/flyonspeed/OnSpeed-XPlane/releases) for latest releases of this plugin.
+
 ## XPlane SDK
 
 This plugin requires the XPlane SDK to be installed. You can download it from the [XPlane SDK](https://developer.x-plane.com/sdk/).
