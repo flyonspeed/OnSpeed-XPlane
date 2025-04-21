@@ -22,6 +22,8 @@ cmake ..
 
 on unix/macos:
 
+inside the 'build' folder run the following.
+
 ```bash
 make
 ```

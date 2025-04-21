@@ -49,11 +49,11 @@
 // Function declarations
 void cleanupAudio();
 
-// AOA ranges for different states
-#define AOA_BELOW_LDMAX        5.5f    // Below this is "Below LDMax" - no tone
-#define AOA_BELOW_ONSPEED      9.0f    // Between LDMax and this is "Below OnSpeed"
-#define AOA_ONSPEED_MAX        10.5f   // Between Below OnSpeed and this is "OnSpeed"
-#define AOA_ABOVE_ONSPEED_MAX  11.5f   // Above this is "Above OnSpeed"
+// AOA ranges for different states (default values)
+#define AOA_BELOW_LDMAX        6.0f    // Below this is "Below LDMax" - no tone
+#define AOA_BELOW_ONSPEED      7.3f    // Between LDMax and this is "Below OnSpeed"
+#define AOA_ONSPEED_MAX        9.6f   // Between Below OnSpeed and this is "OnSpeed"
+#define AOA_ABOVE_ONSPEED_MAX  12.5f   // Above this is "Above OnSpeed"
                                        // Above this is "Stall Warning"
 
 // Tone configuration
