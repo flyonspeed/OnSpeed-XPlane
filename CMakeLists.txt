@@ -95,7 +95,7 @@ elseif(WIN32)
     target_link_libraries(AOA-Tone-FlyOnSpeed
         "${XPLANE_SDK_LIBS}/XPLM_64.lib"
         "${XPLANE_SDK_LIBS}/XPWidgets_64.lib"
-        "OpenAL32"
+        ${OPENAL_LIBRARY}
     )
 else()
     target_link_libraries(AOA-Tone-FlyOnSpeed

@@ -8,8 +8,11 @@
 
 #ifdef _WIN32
     #define PLUGIN_API __declspec(dllexport)
-    #include <al.h>
-    #include <alc.h>
+    #include <AL/al.h>
+    #include <AL/alc.h>
+    #include <sstream>
+    #include <cmath>
+    #define _USE_MATH_DEFINES
     #define IBM 1
     #define XPWIDGETS 1
     #define XPMENUS 1

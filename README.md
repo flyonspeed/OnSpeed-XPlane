@@ -33,8 +33,25 @@ output  ```build/mac_x64/AOA-Tone-FlyOnSpeed.dylib```
 The .dylib file needs to be copied to the ```Resources/plugins``` folder in your XPlane installation.
 and renamed to .xpl
 
+## Build on Windows (Visual Code 2022)
 
+clone the repository
 
+![Screenshot 2025-04-21 011649](https://github.com/user-attachments/assets/104a3b06-e479-42b8-bd2e-e94c481fc768)
+
+install [OpenAl for windows](https://www.openal-soft.org/openal-binaries/openal-soft-1.24.3-bin.zip)
+
+extract the zip to the root of the project
+
+![Screenshot 2025-04-21 012550](https://github.com/user-attachments/assets/cf52fbe5-6876-4276-b1a9-fbe50dcb4811)
+
+Go to the CMakeSettings.json in the CMake Settings Editor and update the CMake variables for OPENAL_INCLUDE_DIR and OPENAL_LIBRARY
+
+![Screenshot 2025-04-21 012812](https://github.com/user-attachments/assets/ac0b2c81-308b-426f-8994-fa58768c9567)
+![Screenshot 2025-04-21 015310](https://github.com/user-attachments/assets/f006b9ba-3fb3-4451-bdd2-0e6ef7ddcadf)
+
+output ```out\build\x64-Debug\AOA-Tone-FlyOnSpeed.xpl```
+The file needs to be copied to the ```Resources/plugins``` folder in your XPlane installation.
 
 ## Code notes
 
