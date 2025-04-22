@@ -4,11 +4,16 @@ This plugin plays audio tones based on the Angle of Attack (AOA) and Fly On Spee
 
 ## Releases
 
-Goto [Releases](https://github.com/flyonspeed/OnSpeed-XPlane/releases) for latest releases of this plugin.
+You can install a prebuilt mac or windows version of this plugin.
 
-## XPlane SDK
+[Mac Release]([https://github.com/flyonspeed/OnSpeed-XPlane/releases](https://github.com/flyonspeed/OnSpeed-XPlane/releases/tag/0.1)) 
 
-This plugin requires the XPlane SDK to be installed. You can download it from the [XPlane SDK](https://developer.x-plane.com/sdk/).
+[Windows Release](https://github.com/flyonspeed/OnSpeed-XPlane/releases/tag/v0.1-Windows-debug-Compile)
+
+
+## Building this plugin
+
+To build this plugin you will need the XPlane SDK to be installed. You can download it from the [XPlane SDK](https://developer.x-plane.com/sdk/).
 
 Currently using: X-Plane SDK 4.1.1 for Windows, Linux and Mac ZIP (X-Plane 12.1.0 & newer)
 
