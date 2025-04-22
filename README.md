@@ -6,7 +6,7 @@ This plugin plays audio tones based on the Angle of Attack (AOA) and Fly On Spee
 
 You can install a prebuilt mac or windows version of this plugin.
 
-[Mac Release]([https://github.com/flyonspeed/OnSpeed-XPlane/releases](https://github.com/flyonspeed/OnSpeed-XPlane/releases/tag/0.1)) 
+[Mac Release]([https://github.com/flyonspeed/OnSpeed-XPlane/releases](https://github.com/flyonspeed/OnSpeed-XPlane/releases/tag/0.1) 
 
 [Windows Release](https://github.com/flyonspeed/OnSpeed-XPlane/releases/tag/v0.1-Windows-debug-Compile)
 
