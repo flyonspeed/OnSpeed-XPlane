@@ -1,5 +1,5 @@
-#define FLYONSPEED_VERSION  "0.1.9"
-#define FLYONSPEED_DATE     "2/21/2025"
+#define FLYONSPEED_VERSION  "0.1.11"
+#define FLYONSPEED_DATE     "4/23/2025"
 
 #define XPLM_64 1  // Define XPLM_64 as 1 for 64-bit compatibility
 #ifndef XPLM_API   
@@ -51,15 +51,16 @@
 
 // Function declarations
 void cleanupAudio();
+static void UpdateAOATextFields();
 
 // AOA ranges for different states (default values)
-#define AOA_BELOW_LDMAX        6.0f    // Below this is "Below LDMax" - no tone
-#define AOA_BELOW_ONSPEED      7.3f    // Between LDMax and this is "Below OnSpeed"
-#define AOA_ONSPEED_MAX        9.6f   // Between Below OnSpeed and this is "OnSpeed"
-#define AOA_ABOVE_ONSPEED_MAX  12.5f   // Above this is "Above OnSpeed"
-                                       // Above this is "Stall Warning"
+float AOA_BELOW_LDMAX = 6.0f;    // Below this is "Below LDMax" - no tone
+float AOA_BELOW_ONSPEED = 7.3f;    // Between LDMax and this is "Below OnSpeed"
+float AOA_ONSPEED_MAX = 9.6f;   // Between Below OnSpeed and this is "OnSpeed"
+float AOA_ABOVE_ONSPEED_MAX = 12.5f;   // Above this is "Above OnSpeed"
+float AOA_STALL_WARNING = 15.0f;   // Above this is "Stall Warning"
 
-#define AOA_IAS_TONE_ENABLE    25.0f   // IAS (knts) above this value will enable the tone
+float AOA_IAS_TONE_ENABLE = 25.0f;   // IAS (knts) above this value will enable the tone
 
 // Tone configuration
 #define TONE_NORMAL_FREQ       400.0f   // Normal frequency in Hz
@@ -116,6 +117,23 @@ float audioPulseRate = PULSE_RATE_NORMAL;
 static int lastWidgetBottom = 0;
 static const int WIDGET_HEIGHT = 20;
 static const int WIDGET_MARGIN = 5;
+
+// Add these globals with other globals
+static XPWidgetID widgetAOABelowLDMax = nullptr;
+static XPWidgetID widgetAOABelowOnSpeed = nullptr;
+static XPWidgetID widgetAOAOnSpeedMax = nullptr;
+static XPWidgetID widgetAOAAboveOnSpeedMax = nullptr;
+static XPWidgetID widgetAOAStallWarning = nullptr;
+static XPWidgetID widgetAOAIASToneEnable = nullptr;
+static XPWidgetID widgetButtonUpdateValues = nullptr;
+
+// Temporary variables to store text field values
+static float temp_AOA_BELOW_LDMAX = 0.0f;
+static float temp_AOA_BELOW_ONSPEED = 0.0f;
+static float temp_AOA_ONSPEED_MAX = 0.0f;
+static float temp_AOA_ABOVE_ONSPEED_MAX = 0.0f;
+static float temp_AOA_STALL_WARNING = 0.0f;
+static float temp_AOA_IAS_TONE_ENABLE = 0.0f;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -203,7 +221,7 @@ static void printMessageDescription(XPWidgetMessage msg) {
             XPLMDebugString("FlyOnSpeed: xpMsg_ScrollBarSliderPositionChanged\n");
             break;
         default:
-            //XPLMDebugString(("FlyOnSpeed: Unknown message type: " + std::to_string(msg) + "\n").c_str());
+            XPLMDebugString(("FlyOnSpeed: Unknown message type: " + std::to_string(msg) + "\n").c_str());
             break;
     }
 }
@@ -242,6 +260,120 @@ static int AudioControlHandler(
             XPLMReloadPlugins();
             return 1;
         }
+        // Add handler for update values button
+        else if (inParam1 == (intptr_t)widgetButtonUpdateValues) {
+            XPLMDebugString("FlyOnSpeed: Updating AOA values\n");
+            
+            // Directly read from text fields when updating
+            char buffer[32];
+            float value;
+            
+            // Get Below LDMax value
+            XPGetWidgetDescriptor(widgetAOABelowLDMax, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) AOA_BELOW_LDMAX = value;
+            
+            // Get Below OnSpeed value
+            XPGetWidgetDescriptor(widgetAOABelowOnSpeed, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) AOA_BELOW_ONSPEED = value;
+            
+            // Get OnSpeed Max value
+            XPGetWidgetDescriptor(widgetAOAOnSpeedMax, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) AOA_ONSPEED_MAX = value;
+            
+            // Get Above OnSpeed Max value
+            XPGetWidgetDescriptor(widgetAOAAboveOnSpeedMax, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) AOA_ABOVE_ONSPEED_MAX = value;
+            
+            // Get Stall Warning value
+            XPGetWidgetDescriptor(widgetAOAStallWarning, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) AOA_STALL_WARNING = value;
+            
+            // Get IAS Tone Enable value
+            XPGetWidgetDescriptor(widgetAOAIASToneEnable, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) AOA_IAS_TONE_ENABLE = value;
+            
+            // Debug output to check values
+            char debugMsg[256];
+            snprintf(debugMsg, sizeof(debugMsg), 
+                     "FlyOnSpeed: Updated values - IAS Enable: %.1f, Below LDMax: %.1f, Below OnSpeed: %.1f, OnSpeed Max: %.1f, Above OnSpeed: %.1f, Stall: %.1f\n",
+                     AOA_IAS_TONE_ENABLE, AOA_BELOW_LDMAX, AOA_BELOW_ONSPEED, AOA_ONSPEED_MAX, AOA_ABOVE_ONSPEED_MAX, AOA_STALL_WARNING);
+            XPLMDebugString(debugMsg);
+            
+            // Update the temporary variables to match the new values
+            temp_AOA_BELOW_LDMAX = AOA_BELOW_LDMAX;
+            temp_AOA_BELOW_ONSPEED = AOA_BELOW_ONSPEED;
+            temp_AOA_ONSPEED_MAX = AOA_ONSPEED_MAX;
+            temp_AOA_ABOVE_ONSPEED_MAX = AOA_ABOVE_ONSPEED_MAX;
+            temp_AOA_STALL_WARNING = AOA_STALL_WARNING;
+            temp_AOA_IAS_TONE_ENABLE = AOA_IAS_TONE_ENABLE;
+            
+            // Update the display with the new values
+            UpdateAOATextFields();
+            
+            return 1;
+        }
+    }
+    
+    if (inMessage == xpMsg_TextFieldChanged) {
+        char buffer[32];
+        float value;
+        
+        if (inParam1 == (intptr_t)widgetAOABelowLDMax) {
+            XPGetWidgetDescriptor(widgetAOABelowLDMax, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) {
+                temp_AOA_BELOW_LDMAX = value;
+                XPLMDebugString(("FlyOnSpeed: Text field changed - Below LDMax: " + std::to_string(value) + "\n").c_str());
+            }
+        }
+        else if (inParam1 == (intptr_t)widgetAOABelowOnSpeed) {
+            XPGetWidgetDescriptor(widgetAOABelowOnSpeed, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) {
+                temp_AOA_BELOW_ONSPEED = value;
+                XPLMDebugString(("FlyOnSpeed: Text field changed - Below OnSpeed: " + std::to_string(value) + "\n").c_str());
+            }
+        }
+        else if (inParam1 == (intptr_t)widgetAOAOnSpeedMax) {
+            XPGetWidgetDescriptor(widgetAOAOnSpeedMax, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) {
+                temp_AOA_ONSPEED_MAX = value;
+                XPLMDebugString(("FlyOnSpeed: Text field changed - OnSpeed Max: " + std::to_string(value) + "\n").c_str());
+            }
+        }
+        else if (inParam1 == (intptr_t)widgetAOAAboveOnSpeedMax) {
+            XPGetWidgetDescriptor(widgetAOAAboveOnSpeedMax, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) {
+                temp_AOA_ABOVE_ONSPEED_MAX = value;
+                XPLMDebugString(("FlyOnSpeed: Text field changed - Above OnSpeed: " + std::to_string(value) + "\n").c_str());
+            }
+        }
+        else if (inParam1 == (intptr_t)widgetAOAStallWarning) {
+            XPGetWidgetDescriptor(widgetAOAStallWarning, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) {
+                temp_AOA_STALL_WARNING = value;
+                XPLMDebugString(("FlyOnSpeed: Text field changed - Stall Warning: " + std::to_string(value) + "\n").c_str());
+            }
+        }
+        else if (inParam1 == (intptr_t)widgetAOAIASToneEnable) {
+            XPGetWidgetDescriptor(widgetAOAIASToneEnable, buffer, sizeof(buffer));
+            value = atof(buffer);
+            if (value > 0) {
+                temp_AOA_IAS_TONE_ENABLE = value;
+                XPLMDebugString(("FlyOnSpeed: Text field changed - IAS Tone Enable: " + std::to_string(value) + "\n").c_str());
+            }
+        }
+        
+        return 1;
     }
 
     return 0;
@@ -283,6 +415,61 @@ static XPWidgetID createWidget(int widgetClass, const char* description, int lef
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Add this helper function to create a labeled text field
+static XPWidgetID createLabeledTextField(const char* label, float value, int leftOffset = 20) {
+    if (audioControlWidget == nullptr) {
+        return nullptr;
+    }
+    
+    // Get the main window dimensions
+    int left, top, right, bottom;
+    XPGetWidgetGeometry(audioControlWidget, &left, &top, &right, &bottom);
+    
+    // Adjust lastWidgetBottom for the new widget
+    lastWidgetBottom -= (WIDGET_HEIGHT + WIDGET_MARGIN);
+    
+    // Create label
+    XPWidgetID labelWidget = XPCreateWidget(
+        left + leftOffset,                    // left
+        lastWidgetBottom,                     // top
+        left + leftOffset + 90,               // right
+        lastWidgetBottom - WIDGET_HEIGHT,     // bottom
+        1,                                    // visible
+        label,                                // descriptor
+        0,                                    // not root
+        audioControlWidget,                   // container
+        xpWidgetClass_Caption                 // class
+    );
+    
+    // Create text field
+    XPWidgetID textField = XPCreateWidget(
+        left + leftOffset + 100,              // left
+        lastWidgetBottom,                     // top
+        left + leftOffset + 160,              // right
+        lastWidgetBottom - WIDGET_HEIGHT,     // bottom
+        1,                                    // visible
+        "",                                   // descriptor (will be set below)
+        0,                                    // not root
+        audioControlWidget,                   // container
+        xpWidgetClass_TextField               // class
+    );
+    
+    // Set additional text field properties
+    XPSetWidgetProperty(textField, xpProperty_TextFieldType, xpTextEntryField);
+    XPSetWidgetProperty(textField, xpProperty_Enabled, 1);
+    
+    // Set the initial value
+    char valueText[16];
+    snprintf(valueText, sizeof(valueText), "%.1f", value);
+    XPSetWidgetDescriptor(textField, valueText);
+    
+    XPLMDebugString(("FlyOnSpeed: Created text field for " + std::string(label) + " with initial value " + valueText + "\n").c_str());
+    
+    return textField;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Modify CreateAudioControlWindow to use the helper function
 static void CreateAudioControlWindow(int x, int y, int w, int h) {
     int x2 = x + w;
@@ -319,6 +506,20 @@ static void CreateAudioControlWindow(int x, int y, int w, int h) {
         "" 
     );
     
+    // Add text fields for editing AOA threshold values
+    widgetAOABelowLDMax = createLabeledTextField("Below LDMax:", AOA_BELOW_LDMAX);
+    widgetAOABelowOnSpeed = createLabeledTextField("Below OnSpeed:", AOA_BELOW_ONSPEED);
+    widgetAOAOnSpeedMax = createLabeledTextField("OnSpeed Max:", AOA_ONSPEED_MAX);
+    widgetAOAAboveOnSpeedMax = createLabeledTextField("Above OnSpeed:", AOA_ABOVE_ONSPEED_MAX);
+    widgetAOAStallWarning = createLabeledTextField("Stall Warning:", AOA_STALL_WARNING);
+    widgetAOAIASToneEnable = createLabeledTextField("IAS Tone Enable:", AOA_IAS_TONE_ENABLE);
+    
+    // Add the Update Values button
+    widgetButtonUpdateValues = createWidget(
+        xpWidgetClass_Button,
+        "Update Values"
+    );
+    
     audioToggleCheckbox = createWidget(
         xpWidgetClass_Button,
         "Sound: Off"
@@ -334,14 +535,52 @@ static void CreateAudioControlWindow(int x, int y, int w, int h) {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Add a function to update text fields with current values
+static void UpdateAOATextFields() {
+    if (!audioControlWidget || !XPIsWidgetVisible(audioControlWidget)) {
+        return;
+    }
+    
+    char buffer[16];
+    
+    // Initialize temporary variables with current values
+    temp_AOA_BELOW_LDMAX = AOA_BELOW_LDMAX;
+    temp_AOA_BELOW_ONSPEED = AOA_BELOW_ONSPEED;
+    temp_AOA_ONSPEED_MAX = AOA_ONSPEED_MAX;
+    temp_AOA_ABOVE_ONSPEED_MAX = AOA_ABOVE_ONSPEED_MAX;
+    temp_AOA_STALL_WARNING = AOA_STALL_WARNING;
+    temp_AOA_IAS_TONE_ENABLE = AOA_IAS_TONE_ENABLE;
+    
+    snprintf(buffer, sizeof(buffer), "%.1f", AOA_BELOW_LDMAX);
+    XPSetWidgetDescriptor(widgetAOABelowLDMax, buffer);
+    
+    snprintf(buffer, sizeof(buffer), "%.1f", AOA_BELOW_ONSPEED);
+    XPSetWidgetDescriptor(widgetAOABelowOnSpeed, buffer);
+    
+    snprintf(buffer, sizeof(buffer), "%.1f", AOA_ONSPEED_MAX);
+    XPSetWidgetDescriptor(widgetAOAOnSpeedMax, buffer);
+    
+    snprintf(buffer, sizeof(buffer), "%.1f", AOA_ABOVE_ONSPEED_MAX);
+    XPSetWidgetDescriptor(widgetAOAAboveOnSpeedMax, buffer);
+    
+    snprintf(buffer, sizeof(buffer), "%.1f", AOA_STALL_WARNING);
+    XPSetWidgetDescriptor(widgetAOAStallWarning, buffer);
+    
+    snprintf(buffer, sizeof(buffer), "%.1f", AOA_IAS_TONE_ENABLE);
+    XPSetWidgetDescriptor(widgetAOAIASToneEnable, buffer);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Add menu handler
 static void AudioMenuHandler(void * mRef, void * iRef)
 {
     if (!strcmp((char *)iRef, "Show")) {
         if (!audioControlWidget) {
-            CreateAudioControlWindow(300, 450, 200, 200);
+            CreateAudioControlWindow(300, 600, 250, 350);
         } else if (!XPIsWidgetVisible(audioControlWidget)) {
             XPShowWidget(audioControlWidget);
+            UpdateAOATextFields(); // Update text fields when showing the window
         }
     }
 }
@@ -426,9 +665,11 @@ void PlayAOATone(float aoa, float elapsedTime) {
     }
     avgAoa /= aoaHistory.size();
 
+    float ias = XPLMGetDataf(iasDataRef);
+
     // Update widgetAOAValue with both current and averaged AOA values
     char aoaText[50];
-    snprintf(aoaText, sizeof(aoaText), "AOA: %.1f (avg: %.1f)", aoa, avgAoa);
+    snprintf(aoaText, sizeof(aoaText), "AOA: %.1f (avg: %.1f) IAS: %.1f", aoa, avgAoa, ias);
     XPSetWidgetDescriptor(widgetAOAValue, aoaText);
 
 
@@ -440,7 +681,6 @@ void PlayAOATone(float aoa, float elapsedTime) {
     }
 
     // Check if IAS is above the threshold
-    float ias = XPLMGetDataf(iasDataRef);
     if (ias < AOA_IAS_TONE_ENABLE) {
         shouldPlay = false;
         alSourceStop(audioSource);
@@ -498,7 +738,7 @@ float CheckAOAAndPlayTone(float inElapsedSinceLastCall,
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Modify XPluginStart to start the pulse thread
+// Modified XPluginStart to register a flight loop for updating text fields
 PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outName, "AOA-Tone-FlyOnSpeed");
     strcpy(outSig, "xplane.plugin.aoa-tone-flyon-speed");
@@ -553,6 +793,14 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     // Start the pulse thread
     threadRunning = true;
     pulseThread = new std::thread(PulseThreadFunction);
+
+    // Initialize temporary variables
+    temp_AOA_BELOW_LDMAX = AOA_BELOW_LDMAX;
+    temp_AOA_BELOW_ONSPEED = AOA_BELOW_ONSPEED;
+    temp_AOA_ONSPEED_MAX = AOA_ONSPEED_MAX;
+    temp_AOA_ABOVE_ONSPEED_MAX = AOA_ABOVE_ONSPEED_MAX;
+    temp_AOA_STALL_WARNING = AOA_STALL_WARNING;
+    temp_AOA_IAS_TONE_ENABLE = AOA_IAS_TONE_ENABLE;
 
     return 1;
 }
