@@ -1,4 +1,4 @@
-#define FLYONSPEED_VERSION  "0.1.11"
+#define FLYONSPEED_VERSION  "0.1.12"
 #define FLYONSPEED_DATE     "4/23/2025"
 
 #define XPLM_64 1  // Define XPLM_64 as 1 for 64-bit compatibility
@@ -54,13 +54,12 @@ void cleanupAudio();
 static void UpdateAOATextFields();
 
 // AOA ranges for different states (default values)
-float AOA_BELOW_LDMAX = 6.0f;    // Below this is "Below LDMax" - no tone
-float AOA_BELOW_ONSPEED = 7.3f;    // Between LDMax and this is "Below OnSpeed"
-float AOA_ONSPEED_MAX = 9.6f;   // Between Below OnSpeed and this is "OnSpeed"
-float AOA_ABOVE_ONSPEED_MAX = 12.5f;   // Above this is "Above OnSpeed"
-float AOA_STALL_WARNING = 15.0f;   // Above this is "Stall Warning"
+float AOA_BELOW_LDMAX           = 6.0f;     // Below this is "Below LDMax" - no tone
+float AOA_BELOW_ONSPEED         = 7.3f;     // Between LDMax and this is "Below OnSpeed"
+float AOA_ONSPEED_MAX           = 9.6f;     // Between Below OnSpeed and this is "OnSpeed"
+float AOA_ABOVE_ONSPEED_MAX     = 12.5f;    // Above this is "Above OnSpeed"
 
-float AOA_IAS_TONE_ENABLE = 25.0f;   // IAS (knts) above this value will enable the tone
+float AOA_IAS_TONE_ENABLE       = 25.0f;    // IAS (knots) above this value will enable the tone
 
 // Tone configuration
 #define TONE_NORMAL_FREQ       400.0f   // Normal frequency in Hz
@@ -87,6 +86,7 @@ ALuint audioBufferHigh;    // New buffer for high frequency
 // DataRef for AOA and IAS (indicated airspeed)
 XPLMDataRef aoaDataRef = nullptr;
 XPLMDataRef iasDataRef = nullptr;
+XPLMDataRef aircraftNameDataRef = nullptr;
 
 // Add these globals for the UI
 static XPWidgetID audioControlWidget = nullptr;
@@ -132,7 +132,6 @@ static float temp_AOA_BELOW_LDMAX = 0.0f;
 static float temp_AOA_BELOW_ONSPEED = 0.0f;
 static float temp_AOA_ONSPEED_MAX = 0.0f;
 static float temp_AOA_ABOVE_ONSPEED_MAX = 0.0f;
-static float temp_AOA_STALL_WARNING = 0.0f;
 static float temp_AOA_IAS_TONE_ENABLE = 0.0f;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -287,12 +286,7 @@ static int AudioControlHandler(
             XPGetWidgetDescriptor(widgetAOAAboveOnSpeedMax, buffer, sizeof(buffer));
             value = atof(buffer);
             if (value > 0) AOA_ABOVE_ONSPEED_MAX = value;
-            
-            // Get Stall Warning value
-            XPGetWidgetDescriptor(widgetAOAStallWarning, buffer, sizeof(buffer));
-            value = atof(buffer);
-            if (value > 0) AOA_STALL_WARNING = value;
-            
+                        
             // Get IAS Tone Enable value
             XPGetWidgetDescriptor(widgetAOAIASToneEnable, buffer, sizeof(buffer));
             value = atof(buffer);
@@ -301,8 +295,8 @@ static int AudioControlHandler(
             // Debug output to check values
             char debugMsg[256];
             snprintf(debugMsg, sizeof(debugMsg), 
-                     "FlyOnSpeed: Updated values - IAS Enable: %.1f, Below LDMax: %.1f, Below OnSpeed: %.1f, OnSpeed Max: %.1f, Above OnSpeed: %.1f, Stall: %.1f\n",
-                     AOA_IAS_TONE_ENABLE, AOA_BELOW_LDMAX, AOA_BELOW_ONSPEED, AOA_ONSPEED_MAX, AOA_ABOVE_ONSPEED_MAX, AOA_STALL_WARNING);
+                     "FlyOnSpeed: Updated values - IAS Enable: %.1f, Below LDMax: %.1f, Below OnSpeed: %.1f, OnSpeed Max: %.1f, Above OnSpeed: %.1f\n",
+                     AOA_IAS_TONE_ENABLE, AOA_BELOW_LDMAX, AOA_BELOW_ONSPEED, AOA_ONSPEED_MAX, AOA_ABOVE_ONSPEED_MAX);
             XPLMDebugString(debugMsg);
             
             // Update the temporary variables to match the new values
@@ -310,7 +304,6 @@ static int AudioControlHandler(
             temp_AOA_BELOW_ONSPEED = AOA_BELOW_ONSPEED;
             temp_AOA_ONSPEED_MAX = AOA_ONSPEED_MAX;
             temp_AOA_ABOVE_ONSPEED_MAX = AOA_ABOVE_ONSPEED_MAX;
-            temp_AOA_STALL_WARNING = AOA_STALL_WARNING;
             temp_AOA_IAS_TONE_ENABLE = AOA_IAS_TONE_ENABLE;
             
             // Update the display with the new values
@@ -354,14 +347,6 @@ static int AudioControlHandler(
             if (value > 0) {
                 temp_AOA_ABOVE_ONSPEED_MAX = value;
                 XPLMDebugString(("FlyOnSpeed: Text field changed - Above OnSpeed: " + std::to_string(value) + "\n").c_str());
-            }
-        }
-        else if (inParam1 == (intptr_t)widgetAOAStallWarning) {
-            XPGetWidgetDescriptor(widgetAOAStallWarning, buffer, sizeof(buffer));
-            value = atof(buffer);
-            if (value > 0) {
-                temp_AOA_STALL_WARNING = value;
-                XPLMDebugString(("FlyOnSpeed: Text field changed - Stall Warning: " + std::to_string(value) + "\n").c_str());
             }
         }
         else if (inParam1 == (intptr_t)widgetAOAIASToneEnable) {
@@ -511,7 +496,6 @@ static void CreateAudioControlWindow(int x, int y, int w, int h) {
     widgetAOABelowOnSpeed = createLabeledTextField("Below OnSpeed:", AOA_BELOW_ONSPEED);
     widgetAOAOnSpeedMax = createLabeledTextField("OnSpeed Max:", AOA_ONSPEED_MAX);
     widgetAOAAboveOnSpeedMax = createLabeledTextField("Above OnSpeed:", AOA_ABOVE_ONSPEED_MAX);
-    widgetAOAStallWarning = createLabeledTextField("Stall Warning:", AOA_STALL_WARNING);
     widgetAOAIASToneEnable = createLabeledTextField("IAS Tone Enable:", AOA_IAS_TONE_ENABLE);
     
     // Add the Update Values button
@@ -548,7 +532,6 @@ static void UpdateAOATextFields() {
     temp_AOA_BELOW_ONSPEED = AOA_BELOW_ONSPEED;
     temp_AOA_ONSPEED_MAX = AOA_ONSPEED_MAX;
     temp_AOA_ABOVE_ONSPEED_MAX = AOA_ABOVE_ONSPEED_MAX;
-    temp_AOA_STALL_WARNING = AOA_STALL_WARNING;
     temp_AOA_IAS_TONE_ENABLE = AOA_IAS_TONE_ENABLE;
     
     snprintf(buffer, sizeof(buffer), "%.1f", AOA_BELOW_LDMAX);
@@ -562,10 +545,7 @@ static void UpdateAOATextFields() {
     
     snprintf(buffer, sizeof(buffer), "%.1f", AOA_ABOVE_ONSPEED_MAX);
     XPSetWidgetDescriptor(widgetAOAAboveOnSpeedMax, buffer);
-    
-    snprintf(buffer, sizeof(buffer), "%.1f", AOA_STALL_WARNING);
-    XPSetWidgetDescriptor(widgetAOAStallWarning, buffer);
-    
+        
     snprintf(buffer, sizeof(buffer), "%.1f", AOA_IAS_TONE_ENABLE);
     XPSetWidgetDescriptor(widgetAOAIASToneEnable, buffer);
 }
@@ -783,6 +763,12 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
         return 0;
     }
 
+    aircraftNameDataRef = XPLMFindDataRef("sim/aircraft/view/acf_name");
+    if (aircraftNameDataRef == nullptr) {
+        XPLMDebugString("FlyOnSpeed: Failed to find aircraft name DataRef");
+        return 0;
+    }
+
     XPLMRegisterFlightLoopCallback(CheckAOAAndPlayTone, 1.0, nullptr);
 
     // Add menu item
@@ -799,7 +785,6 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     temp_AOA_BELOW_ONSPEED = AOA_BELOW_ONSPEED;
     temp_AOA_ONSPEED_MAX = AOA_ONSPEED_MAX;
     temp_AOA_ABOVE_ONSPEED_MAX = AOA_ABOVE_ONSPEED_MAX;
-    temp_AOA_STALL_WARNING = AOA_STALL_WARNING;
     temp_AOA_IAS_TONE_ENABLE = AOA_IAS_TONE_ENABLE;
 
     return 1;
