@@ -59,6 +59,8 @@ void cleanupAudio();
 #define AOA_ABOVE_ONSPEED_MAX  12.5f   // Above this is "Above OnSpeed"
                                        // Above this is "Stall Warning"
 
+#define AOA_IAS_TONE_ENABLE    25.0f   // IAS (knts) above this value will enable the tone
+
 // Tone configuration
 #define TONE_NORMAL_FREQ       400.0f   // Normal frequency in Hz
 #define TONE_HIGH_FREQ         1600.0f  // High frequency in Hz
@@ -81,8 +83,9 @@ ALuint audioSource;
 ALuint audioBufferNormal;  // Rename existing audioBuffer
 ALuint audioBufferHigh;    // New buffer for high frequency
 
-// DataRef for AOA
+// DataRef for AOA and IAS (indicated airspeed)
 XPLMDataRef aoaDataRef = nullptr;
+XPLMDataRef iasDataRef = nullptr;
 
 // Add these globals for the UI
 static XPWidgetID audioControlWidget = nullptr;
@@ -350,11 +353,13 @@ void PulseThreadFunction() {
     float lastFrequency = 0.0f;
 
     while (threadRunning) {
+
         if (!audioEnabled || !shouldPlay) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
 
+        // localAOA is the current AOA, using a mutex to access it because it is updated in the flight loop
         float localAOA;
         {
             std::lock_guard<std::mutex> lock(aoaMutex);
@@ -434,6 +439,15 @@ void PlayAOATone(float aoa, float elapsedTime) {
         return;
     }
 
+    // Check if IAS is above the threshold
+    float ias = XPLMGetDataf(iasDataRef);
+    if (ias < AOA_IAS_TONE_ENABLE) {
+        shouldPlay = false;
+        alSourceStop(audioSource);
+        XPSetWidgetDescriptor(widgetAudioStatus, ("Audio: None - Below IAS " + std::to_string(AOA_IAS_TONE_ENABLE)).c_str());
+        return;
+    }
+
     // Update the current AOA for the pulse thread
     {
         std::lock_guard<std::mutex> lock(aoaMutex);
@@ -443,7 +457,7 @@ void PlayAOATone(float aoa, float elapsedTime) {
     if (avgAoa < AOA_BELOW_LDMAX) {
         shouldPlay = false;
         alSourceStop(audioSource);
-        XPSetWidgetDescriptor(widgetAudioStatus, "Audio: None - Below L/DMax");
+        XPSetWidgetDescriptor(widgetAudioStatus, ("Audio: None - Below L/DMax " + std::to_string(AOA_BELOW_LDMAX)).c_str());
         return;
     }
     
@@ -519,6 +533,13 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     aoaDataRef = XPLMFindDataRef("sim/flightmodel/position/alpha");
     if (aoaDataRef == nullptr) {
         XPLMDebugString("FlyOnSpeed: Failed to find AOA DataRef");
+        return 0;
+    }
+
+    // ias in knots
+    iasDataRef = XPLMFindDataRef("sim/flightmodel/position/indicated_airspeed");
+    if (iasDataRef == nullptr) {
+        XPLMDebugString("FlyOnSpeed: Failed to find IAS DataRef");
         return 0;
     }
 
