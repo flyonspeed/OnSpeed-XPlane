@@ -40,7 +40,6 @@
 #include "SDK/CHeaders/Widgets/XPStandardWidgets.h"
 #include "SDK/CHeaders/Widgets/XPWidgetUtils.h"
 #include "SDK/CHeaders/XPLM/XPLMMenus.h"
-#include <json.hpp>
 
 #include <iostream>
 #include <cmath>
@@ -49,9 +48,6 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
-#include <fstream>
-
-using json = nlohmann::json;
 
 // Function declarations
 void cleanupAudio();
@@ -91,7 +87,6 @@ ALuint audioBufferHigh;    // New buffer for high frequency
 XPLMDataRef aoaDataRef = nullptr;
 XPLMDataRef iasDataRef = nullptr;
 XPLMDataRef aircraftNameDataRef = nullptr;
-XPLMDataRef airframeIdRef = nullptr;
 
 // Add these globals for the UI
 static XPWidgetID audioControlWidget = nullptr;
@@ -768,6 +763,12 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
         return 0;
     }
 
+    aircraftNameDataRef = XPLMFindDataRef("sim/aircraft/view/acf_name");
+    if (aircraftNameDataRef == nullptr) {
+        XPLMDebugString("FlyOnSpeed: Failed to find aircraft name DataRef");
+        return 0;
+    }
+
     XPLMRegisterFlightLoopCallback(CheckAOAAndPlayTone, 1.0, nullptr);
 
     // Add menu item
@@ -778,46 +779,6 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     // Start the pulse thread
     threadRunning = true;
     pulseThread = new std::thread(PulseThreadFunction);
-
-    //Open Json file
-    //Create an ifstream object
-    std::ifstream inputFile;
-
-    airframeIdRef = XPLMFindDataRef("sim/aircraft/view/acf_ui_name");
-    if (airframeIdRef == nullptr) {
-        XPLMDebugString("FlyOnSpeed: Failed to find acf ui name");
-        return 0;
-    }
-    else {
-        std::string prefix_string = "FlyOnSpeed: acf name is ";
-
-        char ui_name[250] = {};
-        XPLMGetDatab(airframeIdRef, ui_name, 0, 250);
-
-        std::string full_string = prefix_string + ui_name + ".json\n";
-
-        std::string fileName = std::string(ui_name) + ".json";
-
-        // Open the file
-        inputFile.open(fileName);
-
-        if (inputFile.is_open()) {
-            json data = json::parse(inputFile);
-            std::string raw = data.dump();
-            XPLMDebugString(raw.c_str());
-            inputFile.close();
-        }
-        else {
-            // Print an error message if the file could not be opened
-            XPLMDebugString("failed to open json file.");
-            return 0;
-        }
-
-        XPLMDebugString(full_string.c_str());
-    }
-
-
-
 
     // Initialize temporary variables
     temp_AOA_BELOW_LDMAX = AOA_BELOW_LDMAX;
