@@ -99,6 +99,7 @@ static XPWidgetID audioToggleCheckbox = nullptr;
 static XPWidgetID widgetAOAValue = nullptr;
 static XPWidgetID widgetButtonReload = nullptr;
 static XPWidgetID widgetAudioStatus = nullptr;
+static XPWidgetID widgetProfileFileName = nullptr;
 static bool audioEnabled = false;
 static XPLMMenuID menuId;
 
@@ -273,7 +274,7 @@ static void printMessageDescription(XPWidgetMessage msg) {
             XPLMDebugString("FlyOnSpeed: xpMsg_ScrollBarSliderPositionChanged\n");
             break;
         default:
-            XPLMDebugString(("FlyOnSpeed: Unknown message type: " + std::to_string(msg) + "\n").c_str());
+            //XPLMDebugString(("FlyOnSpeed: Unknown message type: " + std::to_string(msg) + "\n").c_str());
             break;
     }
 }
@@ -287,7 +288,9 @@ static int AudioControlHandler(
     intptr_t inParam1,
     intptr_t inParam2)
 {
-    printMessageDescription(inMessage);
+    // use printMessageDescription to print the message description for debugging
+    //printMessageDescription(inMessage);
+
     //XPLMDebugString(("FlyOnSpeed: AudioControlHandler. Message: " + std::to_string(inMessage) + "\n").c_str());
     if (inMessage == xpMessage_CloseButtonPushed) {
         XPHideWidget(audioControlWidget);
@@ -570,6 +573,15 @@ static void CreateAudioControlWindow(int x, int y, int w, int h) {
     widgetAudioStatus = createWidget(
         xpWidgetClass_Caption,
         "" 
+    );
+
+    char ui_name[250] = {};
+    XPLMGetDatab(airframeIdRef, ui_name, 0, 250);
+    std::string profileFileName = "Profile: " + std::string(ui_name) + ".json";
+
+    widgetProfileFileName = createWidget(
+        xpWidgetClass_Caption,
+        profileFileName.c_str()
     );
     
     // Add text fields for editing AOA threshold values
