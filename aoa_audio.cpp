@@ -358,6 +358,34 @@ static int AudioControlHandler(
             temp_AOA_ONSPEED_MAX = AOA_ONSPEED_MAX;
             temp_AOA_ABOVE_ONSPEED_MAX = AOA_ABOVE_ONSPEED_MAX;
             temp_AOA_IAS_TONE_ENABLE = AOA_IAS_TONE_ENABLE;
+
+            std::ofstream inputFile;
+            std::string prefix_string = "FlyOnSpeed: updating ";
+
+            char ui_name[250] = {};
+            XPLMGetDatab(airframeIdRef, ui_name, 0, 250);
+
+            std::string full_string = prefix_string + ui_name + ".json\n";
+
+            std::string fileName = std::string(ui_name) + ".json";
+
+            // Open the file
+            inputFile.open(fileName);
+
+            json jsonToSave = { 
+                {"Below LDMax", AOA_BELOW_LDMAX},
+                {"Below OnSpeed", AOA_BELOW_ONSPEED},
+                {"OnSpeed Max", AOA_ONSPEED_MAX},
+                {"Above OnSpeed", AOA_ABOVE_ONSPEED_MAX},
+                {"IAS Tone Enable", AOA_IAS_TONE_ENABLE}
+            };
+
+            inputFile.write(jsonToSave.dump().c_str(), jsonToSave.dump().size());
+
+            inputFile.close();
+
+            XPLMDebugString(full_string.c_str());
+
             
             // Update the display with the new values
             UpdateAOATextFields();
