@@ -1,5 +1,5 @@
-#define FLYONSPEED_VERSION  "0.1.12"
-#define FLYONSPEED_DATE     "4/23/2025"
+#define FLYONSPEED_VERSION  "0.1.13t"
+#define FLYONSPEED_DATE     "5/01/2025"
 
 #define XPLM_64 1  // Define XPLM_64 as 1 for 64-bit compatibility
 #ifndef XPLM_API   
