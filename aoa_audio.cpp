@@ -162,6 +162,54 @@ std::vector<ALshort> generateTone(float frequency, float duration, int sampleRat
 // Function to initialize OpenAL and create tone
 static float init_sound(float elapsed, float elapsed_sim, int counter, void * ref)
 {
+
+    airframeIdRef = XPLMFindDataRef("sim/aircraft/view/acf_ui_name");
+    if (airframeIdRef == nullptr) {
+        XPLMDebugString("FlyOnSpeed: Failed to find acf ui name");
+        return 0;
+    }
+
+    //Open Json file
+    //Create an ifstream object
+    std::ifstream inputFile;
+    
+    std::string prefix_string = "FlyOnSpeed: acf name is ";
+
+    char ui_name[250] = {};
+    XPLMGetDatab(airframeIdRef, ui_name, 0, 250);
+    std::string fileName = std::string(ui_name) + ".json";
+
+    // Open the file
+    inputFile.open(fileName);
+
+    if (inputFile.is_open()) {
+        json data = json::parse(inputFile);
+
+        auto tempBLDM = data.find("Below LDMax");
+        auto tempBOS = data.find("Below OnSpeed");
+        auto tempOSM = data.find("OnSpeed Max");
+        auto tempAOS = data.find("Above OnSpeed");
+        auto tempISATE = data.find("IAS Tone Enable");
+
+        AOA_BELOW_LDMAX = (float)*tempBLDM;
+        AOA_BELOW_ONSPEED = (float)*tempBOS;
+        AOA_ONSPEED_MAX = (float)*tempOSM;
+        AOA_ABOVE_ONSPEED_MAX = (float)*tempAOS;
+        AOA_IAS_TONE_ENABLE = (float)*tempISATE;
+
+        inputFile.close();
+    }
+    else {
+        // Print an error message if the file could not be opened
+        XPLMDebugString("failed to open json file.");
+        // so just use the last loaded values and continue
+    }
+
+    XPLMDebugString("FlyOnSpeed: acf name is ");
+    XPLMDebugString(ui_name);
+    XPLMDebugString(".json\n");
+
+    // Initialize OpenAL
     device = alcOpenDevice(nullptr);
     XPLMDebugString("FlyOnSpeed: Initializing audio device\n");
     if (!device) {
@@ -175,54 +223,6 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
         XPLMDebugString("FlyOnSpeed: Failed to create context\n");
         alcCloseDevice(device);
         return false;
-    }
-
-    //Open Json file
-    //Create an ifstream object
-    std::ifstream inputFile;
-
-    airframeIdRef = XPLMFindDataRef("sim/aircraft/view/acf_ui_name");
-    if (airframeIdRef == nullptr) {
-        XPLMDebugString("FlyOnSpeed: Failed to find acf ui name");
-        return 0;
-    }
-    else {
-        std::string prefix_string = "FlyOnSpeed: acf name is ";
-
-        char ui_name[250] = {};
-        XPLMGetDatab(airframeIdRef, ui_name, 0, 250);
-
-        std::string full_string = prefix_string + ui_name + ".json\n";
-
-        std::string fileName = std::string(ui_name) + ".json";
-
-        // Open the file
-        inputFile.open(fileName);
-
-        if (inputFile.is_open()) {
-            json data = json::parse(inputFile);
-
-            auto tempBLDM = data.find("Below LDMax");
-            auto tempBOS = data.find("Below OnSpeed");
-            auto tempOSM = data.find("OnSpeed Max");
-            auto tempAOS = data.find("Above OnSpeed");
-            auto tempISATE = data.find("IAS Tone Enable");
-
-            AOA_BELOW_LDMAX = (float)*tempBLDM;
-            AOA_BELOW_ONSPEED = (float)*tempBOS;
-            AOA_ONSPEED_MAX = (float)*tempOSM;
-            AOA_ABOVE_ONSPEED_MAX = (float)*tempAOS;
-            AOA_IAS_TONE_ENABLE = (float)*tempISATE;
-
-            inputFile.close();
-        }
-        else {
-            // Print an error message if the file could not be opened
-            XPLMDebugString("failed to open json file.");
-            return 0;
-        }
-
-        XPLMDebugString(full_string.c_str());
     }
 
     alcMakeContextCurrent(context);
@@ -250,6 +250,11 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
     
     // Configure source to loop
     alSourcei(audioSource, AL_LOOPING, AL_FALSE);
+    
+    alSourcef(audioSource, AL_PITCH, 1.0f);
+    alSourcef(audioSource, AL_GAIN, 1.0f);    
+    alSourcei(audioSource, AL_LOOPING, 0);
+
     
     return 0.0f;
 }
