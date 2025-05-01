@@ -162,7 +162,6 @@ std::vector<ALshort> generateTone(float frequency, float duration, int sampleRat
 // Function to initialize OpenAL and create tone
 static float init_sound(float elapsed, float elapsed_sim, int counter, void * ref)
 {
-
     airframeIdRef = XPLMFindDataRef("sim/aircraft/view/acf_ui_name");
     if (airframeIdRef == nullptr) {
         XPLMDebugString("FlyOnSpeed: Failed to find acf ui name");
@@ -209,7 +208,16 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
     XPLMDebugString(ui_name);
     XPLMDebugString(".json\n");
 
-    // Initialize OpenAL
+    // Initialize OpenAL with specific attributes
+    const ALCint attributes[] = {
+        ALC_FREQUENCY, 44100,  // Sample rate
+        ALC_MONO_SOURCES, 1,   // Number of mono sources
+        ALC_STEREO_SOURCES, 0, // Number of stereo sources
+        ALC_SYNC, AL_FALSE,    // Disable sync
+        0                      // Terminator
+    };
+
+    // Try to open the default device with our attributes
     device = alcOpenDevice(nullptr);
     XPLMDebugString("FlyOnSpeed: Initializing audio device\n");
     if (!device) {
@@ -217,7 +225,8 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
         return false;
     }
     
-    context = alcCreateContext(device, nullptr);
+    // Create context with our attributes
+    context = alcCreateContext(device, attributes);
     XPLMDebugString("FlyOnSpeed: Creating audio context\n");
     if (!context) {
         XPLMDebugString("FlyOnSpeed: Failed to create context\n");
@@ -225,7 +234,13 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
         return false;
     }
 
-    alcMakeContextCurrent(context);
+    // Make our context current
+    if (!alcMakeContextCurrent(context)) {
+        XPLMDebugString("FlyOnSpeed: Failed to make context current\n");
+        alcDestroyContext(context);
+        alcCloseDevice(device);
+        return false;
+    }
 
     // Generate source and buffers
     alGenSources(1, &audioSource);
@@ -255,6 +270,14 @@ static float init_sound(float elapsed, float elapsed_sim, int counter, void * re
     alSourcef(audioSource, AL_GAIN, 1.0f);    
     alSourcei(audioSource, AL_LOOPING, 0);
 
+    // Set listener properties for consistent 3D audio
+    ALfloat listenerPos[] = {0.0f, 0.0f, 0.0f};
+    ALfloat listenerVel[] = {0.0f, 0.0f, 0.0f};
+    ALfloat listenerOri[] = {0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f};
+    
+    alListenerfv(AL_POSITION, listenerPos);
+    alListenerfv(AL_VELOCITY, listenerVel);
+    alListenerfv(AL_ORIENTATION, listenerOri);
     
     return 0.0f;
 }
