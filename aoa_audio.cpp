@@ -763,11 +763,11 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
         return 0;
     }
 
-    aircraftNameDataRef = XPLMFindDataRef("sim/aircraft/view/acf_name");
-    if (aircraftNameDataRef == nullptr) {
-        XPLMDebugString("FlyOnSpeed: Failed to find aircraft name DataRef");
-        return 0;
-    }
+    // aircraftNameDataRef = XPLMFindDataRef("sim/aircraft/view/acf_name");
+    // if (aircraftNameDataRef == nullptr) {
+    //     XPLMDebugString("FlyOnSpeed: Failed to find aircraft name DataRef");
+    //     return 0;
+    // }
 
     XPLMRegisterFlightLoopCallback(CheckAOAAndPlayTone, 1.0, nullptr);
 
